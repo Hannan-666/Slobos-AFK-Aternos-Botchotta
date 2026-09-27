@@ -1135,6 +1135,8 @@ let activeIntervals = [];
 let reconnectTimeoutId = null;
 let connectionTimeoutId = null;
 let isReconnecting = false;
+let movementReady = false;
+let movementReadyTimeoutId = null;
 
 function clearBotTimeouts() {
   if (reconnectTimeoutId) {
@@ -1145,6 +1147,11 @@ function clearBotTimeouts() {
     clearTimeout(connectionTimeoutId);
     connectionTimeoutId = null;
   }
+  if (movementReadyTimeoutId) {
+    clearTimeout(movementReadyTimeoutId);
+    movementReadyTimeoutId = null;
+  }
+  movementReady = false;
 }
 
 // FIX: Discord rate limiting - track last send time
@@ -1283,13 +1290,18 @@ function createBot() {
 
       initializeModules(bot, mcData, defaultMove);
 
-      // Re-enable physics only after the server has completed the spawn phase.
-      // This avoids early movement packets causing connection resets on 26.2 servers.
-      setTimeout(() => {
+      // 26.2 stability guard: wait for the initial world/chunk stream to settle
+      // before enabling physics or movement packets.
+      movementReady = false;
+      if (movementReadyTimeoutId) clearTimeout(movementReadyTimeoutId);
+      movementReadyTimeoutId = setTimeout(() => {
+        movementReadyTimeoutId = null;
         if (bot && botState.connected && !bot._ended) {
           bot.physicsEnabled = true;
+          movementReady = true;
+          addLog("[Bot] 26.2 world stabilized - movement enabled");
         }
-      }, 1000);
+      }, 10000);
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
@@ -1317,6 +1329,7 @@ function createBot() {
         typeof reason === "object" ? JSON.stringify(reason) : reason;
       addLog(`[Bot] Kicked: ${kickReason}`);
       botState.connected = false;
+      movementReady = false;
       botState.errors.push({
         type: "kicked",
         reason: kickReason,
@@ -1350,6 +1363,7 @@ function createBot() {
     bot.on("end", (reason) => {
       addLog(`[Bot] Disconnected: ${reason || "Unknown reason"}`);
       botState.connected = false;
+      movementReady = false;
       clearAllIntervals();
       spawnHandled = false; // reset for next connection
 
@@ -1502,7 +1516,7 @@ function initializeModules(bot, mcData, defaultMove) {
     // Arm swinging
     addInterval(
       () => {
-        if (!bot || !botState.connected) return;
+        if (!bot || !botState.connected || !movementReady) return;
         try {
           bot.swingArm();
         } catch (e) {}
@@ -1513,7 +1527,7 @@ function initializeModules(bot, mcData, defaultMove) {
     // Hotbar cycling
     addInterval(
       () => {
-        if (!bot || !botState.connected) return;
+        if (!bot || !botState.connected || !movementReady) return;
         try {
           const slot = Math.floor(Math.random() * 9);
           bot.setQuickBarSlot(slot);
@@ -1652,7 +1666,7 @@ function startCircleWalk(bot, defaultMove) {
   let lastPathTime = 0;
 
   addInterval(() => {
-    if (!bot || !botState.connected) return;
+    if (!bot || !botState.connected || !movementReady) return;
     const now = Date.now();
     if (now - lastPathTime < 2000) return;
     lastPathTime = now;
@@ -1698,7 +1712,7 @@ function startRandomJump(bot) {
 
 function startLookAround(bot) {
   addInterval(() => {
-    if (!bot || !botState.connected) return;
+    if (!bot || !botState.connected || !movementReady) return;
     try {
       const yaw = Math.random() * Math.PI * 2 - Math.PI;
       const pitch = (Math.random() * Math.PI) / 2 - Math.PI / 4;
@@ -1760,7 +1774,7 @@ function combatModule(bot, mcData) {
 
   // FIX: use physicsTick (not the deprecated physicTick)
   bot.on("physicsTick", () => {
-    if (!bot || !botState.connected) return;
+    if (!bot || !botState.connected || !movementReady) return;
     if (!config.combat["attack-mobs"]) return;
 
     const now = Date.now();
