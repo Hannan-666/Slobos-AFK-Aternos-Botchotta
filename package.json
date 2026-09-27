@@ -8,7 +8,7 @@
     "test": "node --check index.js"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.22.0"
   },
   "author": "Lamgerr",
   "license": "MIT",
@@ -17,5 +17,6 @@
     "mineflayer": "https://github.com/Complexity-ML/mineflayer-26.2/releases/download/complexity-26.2.3/mineflayer-complexity-26.2.3.tgz",
     "mineflayer-pathfinder": "^2.1.1",
     "minecraft-data": "https://github.com/Complexity-ML/node-minecraft-data-26.2/releases/download/complexity-26.2.5/minecraft-data-complexity-26.2.5.tgz"
-  }
+  },
+  "packageManager": "npm@11.6.1"
 }
