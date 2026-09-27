@@ -1364,8 +1364,8 @@ function createBot() {
         );
       }
 
-      // ALWAYS reconnect — bot must never leave the server
-      scheduleReconnect();
+      // Do not reconnect while Render is shutting the process down.
+      if (!shuttingDown) scheduleReconnect();
     });
 
     bot.on("error", (err) => {
@@ -1381,6 +1381,7 @@ function createBot() {
 }
 
 function scheduleReconnect() {
+  if (shuttingDown) return;
   clearBotTimeouts();
 
   // FIX: don't stack reconnect if already waiting
@@ -2067,13 +2068,37 @@ process.on("unhandledRejection", (reason) => {
   }
 });
 
-process.on("SIGTERM", () => {
-  addLog("[System] SIGTERM received — ignoring, bot will stay alive.");
-});
+let shuttingDown = false;
 
-process.on("SIGINT", () => {
-  addLog("[System] SIGINT received — ignoring, bot will stay alive.");
-});
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  addLog(`[System] ${signal} received — shutting down cleanly.`);
+  botState.connected = false;
+  clearAllIntervals();
+  clearBotTimeouts();
+
+  if (reconnectTimeoutId) {
+    clearTimeout(reconnectTimeoutId);
+    reconnectTimeoutId = null;
+  }
+  isReconnecting = false;
+
+  if (bot) {
+    const currentBot = bot;
+    bot = null;
+    try {
+      currentBot.removeAllListeners();
+      currentBot.end();
+    } catch (_) {}
+  }
+
+  setTimeout(() => process.exit(0), 250);
+}
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // =============================
 //===============================
