@@ -1220,7 +1220,12 @@ function createBot() {
       port: config.server.port,
       version: botVersion,
       hideErrors: false,
+      keepAlive: true,
       checkTimeoutInterval: 600000,
+      closeTimeout: 120000,
+      // Minecraft 26.2 can send configuration packets before the bot is spawned.
+      // Keep physics disabled until spawn to avoid sending movement too early.
+      physicsEnabled: false,
     });
 
     bot.loadPlugin(pathfinder);
@@ -1277,6 +1282,14 @@ function createBot() {
       defaultMove.fallDamageCost = 1000;
 
       initializeModules(bot, mcData, defaultMove);
+
+      // Re-enable physics only after the server has completed the spawn phase.
+      // This avoids early movement packets causing connection resets on 26.2 servers.
+      setTimeout(() => {
+        if (bot && botState.connected && !bot._ended) {
+          bot.physicsEnabled = true;
+        }
+      }, 1000);
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
